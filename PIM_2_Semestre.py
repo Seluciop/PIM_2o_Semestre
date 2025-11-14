@@ -12,6 +12,47 @@ from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from PIL import Image, ImageTk
 
+try:
+    from medias_wrapper import calcular_media_final_c, calcular_media_final_python
+    CALCULO_C_DISPONIVEL = True
+except ImportError:
+    CALCULO_C_DISPONIVEL = False
+    print("Aviso: Módulo C não disponível")
+
+# Manter a função original com outro nome para fallback
+def calcular_media_final_original(aluno_id: str, respostas: List[Dict[str, Any]]):
+    # 1. Média das Atividades (Peso 2)
+    notas_atividades = [r.get("nota") for r in respostas if r.get("nota") is not None]
+    media_atividades = sum(notas_atividades) / len(notas_atividades) if notas_atividades else 0
+    
+    # 2. Notas das Provas (NP1 Peso 4, NP2 Peso 4)
+    np1 = get_prova_aluno("NP1", aluno_id)
+    np2 = get_prova_aluno("NP2", aluno_id)
+    nota_np1 = np1.get("nota") if np1 and np1.get("nota") is not None else 0
+    nota_np2 = np2.get("nota") if np2 and np2.get("nota") is not None else 0
+    
+    # 3. Cálculo da Média Final Ponderada
+    media_final = (nota_np1 * 4 + nota_np2 * 4 + media_atividades * 2) / 10
+    
+    return {
+        "media_atividades": media_atividades,
+        "nota_np1": nota_np1,
+        "nota_np2": nota_np2,
+        "media_final": media_final,
+        "status": "Aprovado" if media_final >= 7 else "Reprovado"
+    }
+
+# Nova função principal que escolhe entre C e Python
+def calcular_media_final(aluno_id: str, respostas: List[Dict[str, Any]]):
+    if CALCULO_C_DISPONIVEL:
+        try:
+            return calcular_media_final_c(aluno_id, respostas)
+        except Exception as e:
+            print(f"Erro no cálculo C: {e}. Usando Python.")
+            return calcular_media_final_original(aluno_id, respostas)
+    else:
+        return calcular_media_final_original(aluno_id, respostas)
+
 
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "db"))
 USERS_FILE = os.path.join(DB_DIR, "usuarios.json")
@@ -127,28 +168,6 @@ def get_prova_aluno(prova_tipo: str, aluno_id: str):
     provas = load_json(PROVAS_FILE).get("provas", [])
     return next((p for p in provas if p.get("tipo")==prova_tipo and p.get("aluno_id")==aluno_id), None)
 
-def calcular_media_final(aluno_id: str, respostas: List[Dict[str, Any]]):
-    # 1. Média das Atividades (Peso 2)
-    notas_atividades = [r.get("nota") for r in respostas if r.get("nota") is not None]
-    media_atividades = sum(notas_atividades) / len(notas_atividades) if notas_atividades else 0
-    
-    # 2. Notas das Provas (NP1 Peso 4, NP2 Peso 4)
-    np1 = get_prova_aluno("NP1", aluno_id)
-    np2 = get_prova_aluno("NP2", aluno_id)
-    nota_np1 = np1.get("nota") if np1 and np1.get("nota") is not None else 0
-    nota_np2 = np2.get("nota") if np2 and np2.get("nota") is not None else 0
-    
-    # 3. Cálculo da Média Final Ponderada
-    # (NP1 * 4) + (NP2 * 4) + (Media_Atividades * 2) / 10
-    media_final = (nota_np1 * 4 + nota_np2 * 4 + media_atividades * 2) / 10
-    
-    return {
-        "media_atividades": media_atividades,
-        "nota_np1": nota_np1,
-        "nota_np2": nota_np2,
-        "media_final": media_final,
-        "status": "Aprovado" if media_final >= 7 else "Reprovado"
-    }
 
 def download_file(arquivo_id: str, destino: str = None):
     data = load_json(ARQUIVOS_FILE)
